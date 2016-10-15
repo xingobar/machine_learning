@@ -1,3 +1,4 @@
+# http://stackoverflow.com/questions/33416857/typeerror-cannot-convert-type-tensortypefloat64-vector-of-variable-subtenso
 import theano
 import numpy as np
 import pickle
@@ -24,7 +25,7 @@ def load_data():
     return flatten
 
 
-class LogisticRegressioin(object):
+class LogisticRegression(object):
     def __init__(self,input,n_in,n_out):
         self.W = theano.shared(np.zeros((n_in,n_out),dtype=theano.config.floatX),name='weight',borrow=True)
         self.b = theano.shared(np.zeros((n_out),dtype=theano.config.floatX),name='bias',borrow=True)
@@ -58,7 +59,7 @@ def sgd_optimization(learning_rate = 0.13,n_epoch = 1000, batch_size=600):
     #learning_rate = 0.01
     x = theano.tensor.matrix('x') # data
     y =  theano.tensor.ivector('y') # labels , 1D vector
-    classifier = LogisticRegressioin(input = x , n_in = 28*28,n_out = 10)
+    classifier = LogisticRegression(input = x , n_in = 28*28,n_out = 10)
     cost  = classifier.negative_log_likelihood(y) # loss function
 
     test_model = theano.function(
@@ -147,7 +148,7 @@ def sgd_optimization(learning_rate = 0.13,n_epoch = 1000, batch_size=600):
 
 
 
-    def predict():
+def predict():
     classifier = pickle.load(open('logistic_regression_best_model.pkl','rb'))
     predicited_model = theano.function(
     inputs =[classifier.input],
