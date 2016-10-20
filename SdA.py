@@ -176,7 +176,7 @@ class SdA(object):
 										n_out = hidden_layers_sizes[i],activation=T.nnet.sigmoid)
 
 			self.sigmoid_layers.append(sigmoid_layer)
-			self.params.append(sigmoid_layer.params)
+			self.params.extend(sigmoid_layer.params)
 
 			## n_visible : total number
 			## input : activation output
@@ -191,7 +191,7 @@ class SdA(object):
 										   n_in = hidden_layers_sizes[-1], 
 										   n_out = n_outs)	
 
-		self.params.append(self.logLayer.params)
+		self.params.extend(self.logLayer.params)
 		self.finetune_cost = self.logLayer.negative_log_likelihood(self.y)
 		self.errors = self.logLayer.error(self.y)
 
@@ -318,7 +318,7 @@ def test(finetune_lr=0.1,pretraining_epochs = 15,pretrain_lr=0.001,
 				result.append(pretraining_fns[i](index = minibatch_index,
 										  corruption = corruption_level[i],
 										  lr= pretrain_lr))
-			print 'layer %i , epoch %d, cost %f' %(i,epoch,np.mean(c))
+			print 'layer %i , epoch %d, cost %f' %(i,epoch,np.mean(result))
 
 	end_time = time.time()
 	print "Time is %0.2f " %((end_time - start_time) / 60)
@@ -366,7 +366,7 @@ def test(finetune_lr=0.1,pretraining_epochs = 15,pretrain_lr=0.001,
 				best_iter = iteration
 				
 				## test 
-				test_lossess = test_model
+				test_lossess = test_model()
 				test_mean = np.mean(test_lossess)
 				print 'epoch %i minibatch %i/%i, test score %f' % (epoch,
 																   minibatch_index + 1,
@@ -385,7 +385,7 @@ def test(finetune_lr=0.1,pretraining_epochs = 15,pretrain_lr=0.001,
             'on iteration %i, '
             'with test performance %f %%'
         )
-        % (best_validation_loss * 100., best_iter + 1, test_score * 100.)
+        % (best_validation * 100., best_iter + 1, test_mean * 100.)
     )
 
 if __name__ == "__main__":
