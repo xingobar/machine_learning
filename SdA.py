@@ -3,18 +3,33 @@ import time
 import theano
 from theano import tensor as T
 from theano.tensor.shared_randomstreams import RandomStreams
-from logsitic_sgd import load_data
+from logistic_sgd import load_data
 
+class LogisticRegression(object):
+    def __init__(self,input,n_in,n_out):
+        self.W = theano.shared(np.zeros((n_in,n_out),dtype=theano.config.floatX),name='weight',borrow=True)
+        self.b = theano.shared(np.zeros((n_out),dtype=theano.config.floatX),name='bias',borrow=True)
+        self.y_prob_given_x  =  theano.tensor.nnet.softmax(theano.tensor.dot(input,self.W) + self.b)
+        self.y_pred = theano.tensor.argmax(self.y_prob_given_x,axis=1) 
+        self.params = [self.W,self.b]
+        self.input = input
+    
+    def negative_log_likelihood(self,y):
+        return -theano.tensor.mean(theano.tensor.log(self.y_prob_given_x)[theano.tensor.arange(y.shape[0]),y])
+    
+    def error(self,y):
+        if y.dtype.startswith('int'):
+            return theano.tensor.mean(theano.tensor.neq(self.y_pred,y))
 
 class HiddenLayer(object):
 	def __init__(self,rng,input,n_in,n_out,
-		  		 weight=None,bias=None,activation=T.nnet.tanh):
+		  		 weight=None,bias=None,activation=T.tanh):
 
 		if weight is None:
 
 			## tanh activation function
 			W_values = np.asarray(
-					np.uniform(
+					rng.uniform(
 						low = -np.sqrt(6. / (n_in + n_out)),
 						high = np.sqrt(6. / (n_in + n_out)),
 						size = (n_in,n_out)
@@ -31,89 +46,102 @@ class HiddenLayer(object):
 			bias = theano.shared(value=bias_value,name='bias',borrow=True)
 
 		self.W = Weight
-		self.bias = bias
+		self.b = bias
 		self.params = [self.W,self.b]
 		self.input = input
 		linear_output = T.dot(self.input,self.W) + self.b
 		self.output = (linear_output if activation is None else activation(linear_output))
 
 class dA(object):
-	def __init__(self,random_rng,theano_rng,
-				 input = None ,n_visible = 784,n_hdden = 500,
-				 W = None, bhid = None,bvis = None):
-
-		## bvis : bias of visable
-		## bhid : bias of hidden
-
-
-		if theano_rng is None:
-			theano_rng = RandomStreams(random_rng.randint(2 ** 30))
-
-		if W is None:
-			W_values = np.asarray(
-					random_rng.uniform(
-						low = np.sqrt(6./ (n_visible + n_hidden )),
-						high = np.sqrt(6. / (n_visible + n_hidden)),
-						size = (n_visible,n_hidden)
-					),
-					dtype = theano.config.floatX
-				)
-		## sigmoid is 4 times 
-		W_values *=4
-		Weight = theano.shared(value = W_values , borrow = True , name='weight')
-
-		if bhid is None:
-			bhid = theano.shared(value = np.zeros((n_hidden,),dtype=theano.config.floatX),
-								 borrow	= True,name='b')
-
-		if bvis	is None:
-			bvis = theano.shared(np.zeros((n_visible,),dtype = theano.config.floatX),
-								 borrow= True)
-
-		self.W = Weight
-		self.b = bhid
-		self.b_prime = bvis
-		self.W_prime = self.W.T
-		self.params  = [self.W,self.b,self.b_prime] ## save the parameter of model
-		self.theano_rng = theano_rng
-		self.input = input
-		self.n_visible = n_visible
-		self.n_hidden = n_hidden
-
-		if input is None:
-			self.x = T.dmatrix(name = 'input')
-		else:
-			self.x = self.input
-
-	def get_corrupted_input(self,input,corruption_level):
-		return self.theano_rng.binomial(size = input.shape,n=1,
-										p = 1 - corruption_level,
-										dtype = theano.config.floatX) * input
-
-	def get_reconstructed_input(self,hidden):
-		return T.nnet.sigmoid(T.dot(hidden,self.W_prime) + self.b_prime)
-
-	def get_hidden_values(self,input):
-		return T.nnet.sigmoid(T.dot(input,self.W) + self.b)
-
-	def get_cost_updates(self,corruption_level,learning_rate):
-		x = get_corrupted_input(self.x,corruption_level)
-		y = get_hidden_values(x)
-		z = get_reconstructed_input(y)
-
-		L = - T.sum(self.x * T.log(z) + (1 - self.x) * T.log(1 - z), axis=1)
     
-    	cost = T.mean(L)
+    def __init__(self,numpy_rng,theano_rng,input=None,n_visible=784,n_hidden=500,W=None,bhid=None,bvis=None):
+        
+        ## bhid : bias values for hidden units
+        ## bvis : bias values for visible units
+        
+        self.n_visible = n_visible
+        self.n_hidden = n_hidden
+        
+        if theano_rng is None:
+            theano_rng = RandomStreams(numpy_rng.randint(2 ** 30))
+        
+        
+        if not W:
+            inital_W = np.asarray(
+                            numpy_rng.uniform(
+                                low = -4 * np.sqrt(6. / (n_visible + n_hidden)),
+                                high = 4 * np.sqrt(6. / (n_visible + n_hidden)),
+                                size = (n_visible,n_hidden)
+                            ),dtype = theano.config.floatX
+                        )
+            self.W = theano.shared(value = inital_W ,name='W',borrow= True)
+        else:
+        	#inital_W = W
+        	self.W = W
+        #Weight = theano.shared(value = inital_W, name = 'W',borrow = True)
+        
+        if not bvis:
+            bvis = theano.shared(
+                        value = np.zeros((n_visible,) , dtype = theano.config.floatX),
+                        borrow = True
+                    )
+        
+        if not bhid:
+            bhid = theano.shared(
+                        value = np.zeros((n_hidden,), dtype = theano.config.floatX),
+                        borrow = True,
+                        name = 'b'
+                    )
+        
+        #self.W = Weight
+        self.b = bhid
+        self.b_prime = bvis
+        self.W_prime = self.W.T
+        self.theano_rng = theano_rng
+        
+        if input is None:
+            self.x = T.dmatrix(name='input')
+        else:
+            self.x = input
+        
+        self.params = [self.W , self.b , self.b_prime] ## save the parameter of model
+    
+    
+    def get_corrupted_input(self,input,corruption_level):
+        
+        return self.theano_rng.binomial(size = input.shape, n =1 ,
+                                   p = 1 - corruption_level,
+                                   dtype = theano.config.floatX) * input
+    
+    def get_hidden_values(self,input):
+        
+        return T.nnet.sigmoid(T.dot(input,self.W) + self.b)
+    
+    def get_reconstructed_values(self,hidden):
+        
+        return T.nnet.sigmoid(T.dot(hidden,self.W_prime) + self.b_prime)
+    
+    def get_cost_updates(self,corruption_level, learning_rate):
+        
+        x = self.get_corrupted_input(self.x,corruption_level)
+        y = self.get_hidden_values(x)
+        z = self.get_reconstructed_values(y)
+        
+        L = - T.sum(self.x * T.log(z) + (1 - self.x) * T.log(1 - z), axis=1)
+    
+        cost = T.mean(L)
+        
+        ## gradient descent
+        gparams = T.grad(cost,self.params)
+        ## generate updates
+        updates = [(param, param - learning_rate * gparam) for param,gparam in zip(self.params , gparams)]
+        
+        return (cost,updates)
 
-    	## gradient descent
-    	gparams = T.grad(cost,self.params)
-    	updates = [(param, param - learning_rate * gparam)for param , gparam in zip(self.params , gparams)]
-
-    	return (cost,updates)
 
 ## Stacking
-class Sda(object):
-	def __init__(self, numpy_rng, theano_rng = none,
+class SdA(object):
+	def __init__(self, numpy_rng, theano_rng = None,
 				 n_ins=784,hidden_layers_sizes=[500,500],
 				 n_outs=10,corruption_levels=[0.1,0.1]):
 
@@ -131,7 +159,7 @@ class Sda(object):
 		self.y = T.ivector('y') ## one dimension
 
 
-		for i in xrange(n_layers):
+		for i in xrange(self.n_layers):
 			if i ==0:
 				input_size = n_ins
 			else:
@@ -159,7 +187,7 @@ class Sda(object):
 
 			self.dA_layers.append(dA_layer)
 
-		self.logLayer = LogsiticRegression(input  = sigmoid_layer[-1].output,
+		self.logLayer = LogisticRegression(input  = self.sigmoid_layers[-1].output,
 										   n_in = hidden_layers_sizes[-1], 
 										   n_out = n_outs)	
 
@@ -172,7 +200,7 @@ class Sda(object):
 
 		index =  T.lscalar('index') ## minibatch index
 		corruption_level = T.scalar('corruption')
-		learning_rate = T.scalar('1r')
+		learning_rate = T.scalar('lr')
 		## beginning of a batch given index
 		batch_begin = index * batch_size
 		## end of a batch given index
@@ -193,7 +221,7 @@ class Sda(object):
 				outputs = cost,
 				updates = updates,
 				givens = {
-					self.x : train.x[batch_begin:batch_end]
+					self.x : train_x[batch_begin:batch_end]
 				}
 			)
 
@@ -260,7 +288,16 @@ class Sda(object):
 
 		return train_fn,valid_score,test_score
 
-if __name__ == "__main__":
+
+def test(finetune_lr=0.1,pretraining_epochs = 15,pretrain_lr=0.001,
+		 training_epochs = 1000 , batch_size = 1):
+
+	datasets = load_data()
+	train_x,train_y = datasets[0]
+	valid_x,valid_y = datasets[1]
+	test_x,test_y = datasets[2]
+
+	n_train_batches = train_x.get_value(borrow=True).shape[0] // batch_size
 
 	numpy_rng = np.random.RandomState(42)
 	print 'building the model.....'
@@ -269,5 +306,88 @@ if __name__ == "__main__":
 			  n_outs = 10)
 
 
+	pretraining_fns = sda.pretraining_function(train_x = train_x,
+											   batch_size=batch_size)
 
+	start_time = time.time()
+	corruption_level = [.1,.2,.3]
+	for i in xrange(sda.n_layers):
+		for epoch in xrange(pretraining_epochs):
+			result	= []
+			for minibatch_index in xrange(n_train_batches):
+				result.append(pretraining_fns[i](index = minibatch_index,
+										  corruption = corruption_level[i],
+										  lr= pretrain_lr))
+			print 'layer %i , epoch %d, cost %f' %(i,epoch,np.mean(c))
+
+	end_time = time.time()
+	print "Time is %0.2f " %((end_time - start_time) / 60)
+
+	print 'getting the finetuning function ...'
+	train_fn,valid_model,test_model = sda.build_finetune_functions(
+			datasets = datasets,
+			batch_size = batch_size,
+			learning_rate = finetune_lr
+		)
+
+	print 'finetuning the model ....'
+	## early stopping
+	patience = 10 * n_train_batches
+	patience_increase = 2.
+	improvement_threshold = 0.995
+	validation_frequency = min(n_train_batches, patience //2)
+
+	best_validation = np.inf
+	epoch = 0
+	test_score =0.
+	start_time = time.time()
+	looping = False
+
+	while ( epoch < training_epochs) and (not looping):
+		epoch +=1
+		for minibatch_index in xrange(n_train_batches):
+			iteration = (epoch -1 ) * n_train_batches + minibatch_index
+
+			if (iteration + 1) % validation_frequency == 0:
+				validation_lossess = valid_model()
+				validation_mean = np.mean(validation_lossess)
+				print 'epoch %i minibatch %i/%i, validation_error %f' % (epoch, 
+																	     minibatch_index + 1 , 
+																	     n_train_batches , 
+																	     validation_mean * 100.) 
+
+
+				if validation_mean < best_validation:
+					if validation_mean < best_validation * improvement_threshold:
+						patience = max(patience , iteration * patience_increase)
+
+				## save best validation model
+				best_validation = validation_mean
+				best_iter = iteration
+				
+				## test 
+				test_lossess = test_model
+				test_mean = np.mean(test_lossess)
+				print 'epoch %i minibatch %i/%i, test score %f' % (epoch,
+																   minibatch_index + 1,
+																   n_train_batches,
+																   test_mean * 100.)
+
+
+		if patience <= iteration:
+			looping = True
+			break
+
+	end_tiem = time.time()
+	print(
+        (
+            'Optimization complete with best validation score of %f %%, '
+            'on iteration %i, '
+            'with test performance %f %%'
+        )
+        % (best_validation_loss * 100., best_iter + 1, test_score * 100.)
+    )
+
+if __name__ == "__main__":
+	test()
 
