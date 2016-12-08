@@ -1,4 +1,3 @@
-# http://dataconomy.com/implementing-the-five-most-popular-similarity-measures-in-python/
 from math import *
 ## Euclidean Distance
 def euclidean_distance(x,y):
